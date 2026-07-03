@@ -1,0 +1,4 @@
+git clone https://github.com/xiaobai-xiaohong/gerenzhuanyong.git && cd gerenzhuanyong
+cp .env.example .env
+# 填入 MODEL_API_KEY
+docker-compose up -d
