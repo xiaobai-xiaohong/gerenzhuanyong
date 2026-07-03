@@ -1,0 +1,18 @@
+﻿# Environment (sensitive)
+.env
+
+# Data directories
+data/
+data/postgres/
+data/redis/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,70 @@
+version: '3.8'
+services:
+  mnemosyne-core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mnemosyne/mnemosyne:v5.2
+    container_name: mnemosyne-core
+    ports:
+      - "8010:8010"
+    env_file:
+      - .env
+    environment:
+      - STORAGE_STRATEGY=auto
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=mnemosyne
+      - POSTGRES_USER=mnemosyne
+      - POSTGRES_PASSWORD=Mnemosyne2026!
+      - REDIS_ADDR=redis:6379
+      - HTTP_PROXY=http://host.docker.internal:7897
+      - HTTPS_PROXY=http://host.docker.internal:7897
+    volumes:
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: mnemosyne-pg
+    environment:
+      - POSTGRES_DB=mnemosyne
+      - POSTGRES_USER=mnemosyne
+      - POSTGRES_PASSWORD=Mnemosyne2026!
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mnemosyne -d mnemosyne"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: mnemosyne-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - ./data/redis:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  data:
+    driver: local
