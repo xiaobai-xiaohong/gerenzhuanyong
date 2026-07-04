@@ -216,6 +216,9 @@ class SearchService:
             },
             "level": row.level,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            # duMem memory quality layer
+            "trust_score": row.trust_score,
+            "memory_type": getattr(row, "memory_type", "D"),
         }
 
     def _timeliness_score(self, row) -> float:

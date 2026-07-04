@@ -33,7 +33,7 @@ class Memory(Base):
     title = Column(String(255), nullable=True)
     raw_content = Column(Text, nullable=True)
     content_summary = Column(Text, nullable=True)
-    vector = Column("vector", Text, nullable=True)  # stored as JSON string
+    vector = Column("vector", Text, nullable=True)
     category = Column(String(64), nullable=True)
     tags = Column(JSON, nullable=True)
     quality_score = Column(Float, default=5.0)
@@ -42,17 +42,29 @@ class Memory(Base):
     storage_medium = Column(String(16), default="ssd")
     timeliness = Column(DateTime, nullable=True)
     tenant_id = Column(String(64), default="default")
-    status = Column(String(16), default="active")  # active/processing/failed/archived
+    status = Column(String(16), default="active")
     version = Column(Integer, default=1)
     lma_urn = Column(String(128), unique=True, nullable=False, default=generate_lma)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_access_at = Column(DateTime, default=datetime.utcnow)
 
+    # ── duMem memory quality layer ──────────────────────────────
+    trust_score = Column(Float, default=0.5)
+    source_authority = Column(SmallInteger, default=3)
+    decay_at = Column(DateTime, nullable=True)
+    memory_type = Column(String(8), default="D")
+    helpful_count = Column(Integer, default=0)
+    unhelpful_count = Column(Integer, default=0)
+    is_semantic_deduped = Column(SmallInteger, default=0)
+    decay_version = Column(Integer, default=0)
+
     __table_args__ = (
         Index("ix_memories_category", "category"),
         Index("ix_memories_tenant", "tenant_id"),
         Index("ix_memories_status", "status"),
+        Index("ix_memories_type", "memory_type"),
+        Index("ix_memories_decay_at", "decay_at"),
     )
 
 
@@ -102,12 +114,12 @@ class ToolArchive(Base):
     tool_name = Column(String(128), nullable=False)
     params = Column(JSON, nullable=True)
     result = Column(Text, nullable=True)
-    success = Column(String(8), nullable=False)  # "true" / "false"
+    success = Column(String(8), nullable=False)
     error_type = Column(String(64), nullable=True)
     session_id = Column(String(64), nullable=True)
     project_id = Column(String(64), nullable=True)
     duration_ms = Column(Integer, nullable=True)
-    knowledge_type = Column(String(32), default="skill")  # skill/pitfall
+    knowledge_type = Column(String(32), default="skill")
     related_memory_id = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -120,7 +132,7 @@ class Project(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     tenant_id = Column(String(64), default="default")
-    status = Column(String(16), default="active")  # active/archived/destroyed
+    status = Column(String(16), default="active")
     session_ids = Column(JSON, default=list)
     memory_ids = Column(JSON, default=list)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -133,9 +145,9 @@ class SyncVersion(Base):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     tenant_id = Column(String(64), default="default")
-    entity_type = Column(String(32), nullable=False)  # memory/project/profile
+    entity_type = Column(String(32), nullable=False)
     entity_id = Column(String(64), nullable=False)
     version = Column(BigInteger, nullable=False)
-    operation = Column(String(16), nullable=False)  # create/update/delete
+    operation = Column(String(16), nullable=False)
     payload = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

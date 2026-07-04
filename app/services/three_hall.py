@@ -3,7 +3,7 @@ Three-Hall Pipeline: Archive馆 → Research馆 → Engineering馆
 Implements the core knowledge production流水线 of Mnemosyne v5.2
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
@@ -37,10 +37,15 @@ class ThreeHallPipeline:
         project_id: Optional[str] = None,
         tenant_id: str = "default",
         source: str = "api",
+        memory_type: str = "D",
+        source_authority: int = 3,
     ) -> Memory:
         """
         Execute the full 3-hall pipeline:
         Gate0 (入馆闸) → Research馆 → Engineering馆 → Gate2 (验收闸) → Archive馆
+
+        memory_type: W(铁律)/K(工具)/I(人物)/D(对话)/E(踩坑)/R(反思)/S(研究)
+        source_authority: 1=L3文档/2=L2注入/3=L1终端/4=L0 Shell Hook
         """
         memory_id = generate_memory_id()
         lma_urn = generate_lma()
@@ -63,6 +68,14 @@ class ThreeHallPipeline:
         if not validation_passed:
             # 验收不通过，降级为低置信度
             quality_base *= 0.5
+
+        # ── duMem Trust Scoring: 初始 trust 基于 source_authority ──
+        initial_trust = 0.3 + source_authority * 0.15  # 0.45~0.9
+
+        # ── duMem Decay: 计算衰减时间 ──────────────────────────────
+        decay_days_map = {"W": 365, "K": 180, "I": 90, "D": 30, "E": 60, "R": 45, "S": 120}
+        decay_days = decay_days_map.get(memory_type, 30)
+        decay_at = datetime.utcnow() + timedelta(days=decay_days)
 
         # ── 生成向量 ──────────────────────────────────────────────
         vector = await vector_service.embed(content)
@@ -87,6 +100,11 @@ class ThreeHallPipeline:
             status="active",
             version=1,
             lma_urn=lma_urn,
+            # ── duMem memory quality layer ──────────────────────
+            memory_type=memory_type,
+            source_authority=source_authority,
+            trust_score=initial_trust,
+            decay_at=decay_at,
         )
         self.db.add(memory)
         await self.db.flush()
