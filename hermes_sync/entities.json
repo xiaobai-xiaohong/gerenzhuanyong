@@ -1,0 +1,60 @@
+{
+  "_schema": "1.0",
+  "_desc": "知识图谱。Hermes 每次写 MnemOS 时同步更新实体和关系。搜索时先查此图再定向搜 MnemOS。",
+  "entities": {
+    "人物": {
+      "Alice": {
+        "aliases": [],
+        "type": "person",
+        "notes": "Hermes 技术负责人，向 Bob 汇报"
+      },
+      "Hermes": {
+        "aliases": [],
+        "type": "person"
+      },
+      "Bob": {
+        "aliases": [],
+        "type": "person",
+        "notes": "Engineering Manager"
+      },
+      "Engineering": {
+        "aliases": [],
+        "type": "person"
+      },
+      "Manager": {
+        "aliases": [],
+        "type": "person"
+      }
+    },
+    "项目": {},
+    "工具": {},
+    "概念": {
+      "Google": {
+        "type": "company"
+      },
+      "当前公司": {
+        "type": "company"
+      }
+    }
+  },
+  "relations": [
+    {
+      "from": "Bob",
+      "to": "Google",
+      "type": "曾任职",
+      "category": "职业经历"
+    },
+    {
+      "from": "Alice",
+      "to": "Bob",
+      "type": "汇报给",
+      "category": "工作关系"
+    },
+    {
+      "from": "Bob",
+      "to": "Google",
+      "type": "曾任职",
+      "category": "职业经历"
+    }
+  ]
+}
