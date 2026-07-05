@@ -20,6 +20,10 @@ services:
       - REDIS_ADDR=redis:6379
       - HTTP_PROXY=http://host.docker.internal:7897
       - HTTPS_PROXY=http://host.docker.internal:7897
+      - PYTHONIOENCODING=utf-8
+      - PYTHONUTF8=1
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
     volumes:
       - ./data:/data
     depends_on:
