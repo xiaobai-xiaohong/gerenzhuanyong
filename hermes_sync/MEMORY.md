@@ -31,3 +31,6 @@ MnemOS v6.0 API base=http://localhost:8010/api/v5, archive=POST /memory/archive,
 
 ## 规则 9：每次更新 MEMORY.md 或 entities.json 后，VERSION.md 的 Z +1
 路径：C:/Users/Administrator/gerenzhuanyong/VERSION.md。格式 MnemOS X.Y/Z。X.Y 由用户手动升（重置 Z=1），助手只动 Z。每次完成 memory/entities 更新后，读取当前 Z → +1 → 写回。涉及 git 操作时合并到同一 commit（不要拆成两个 commit）。
+
+## 规则 10：定期蒸馏 MnemOS 碎片记忆为结构化 MEMORY.md
+每累计 20 轮对话或每天（取先到），自动扫描 MnemOS 中 memory_type=general/空的记忆，用 LLM 判断每条应归类 W/K/I/D/E/R/S，删除重复/无价值内容，将高质量碎片提炼合并入 MEMORY.md 对应章节。操作顺序：(1) 扫描 general 类型；(2) LLM 分类 + 去重；(3) 写回 MnemOS 更新类型；(4) 提炼内容追加到 MEMORY.md；(5) git add -A → commit → push → VERSION Z+1。
