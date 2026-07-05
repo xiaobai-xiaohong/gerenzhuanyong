@@ -22,15 +22,23 @@ MnemOS v6.0 API base=http://localhost:8010/api/v5, archive=POST /memory/archive,
 §
 ## 规则 6：写入 MnemOS 时同步提取实体到 entities.json
 每次 archive 新记忆时，正则提取"X是Y/X的老板是Y/X曾任职Y"等关系三元组，同步更新 entities.json（entities 分类入库，relations 追加关系）。由 background_review.py 的 _mnemos_store 调用统一封装为 _entities_sync()。MnemOS search 无 DELETE，entities.json 删除靠人工确认。
+路径：C:/Users/Administrator/gerenzhuanyong/entities.json（仓库根目录）。
 
 ## 规则 7：搜索 MnemOS 时先查 entities.json 再定向搜
 检测多跳查询模式（如"X的老板"、"X曾任职Y"）时，先从 entities.json 推路径，再定向查 MnemOS 对应实体 ID，避免纯向量搜索的碎片化问题。多跳结果与向量结果合并排序。
+entities.json 路径：C:/Users/Administrator/gerenzhuanyong/entities.json。
 §
 ## 规则 8：更新 MEMORY.md 或 entities.json 后走完整 git add -A → commit → push
-三者缺一不可：git add -A、git commit、git push 必须在一个操作流里执行完。不允许只 commit 不 push，也不允许依赖外部手动推。每次更新 MEMORY.md 或 entities.json 后，立即执行 git add -A → commit（附简短描述）→ push。会话启动时的自动同步（检查 24h 条件）也走同一流程。
+三者缺一不可：git add -A、git commit、git push 必须在一个操作流里执行完。不允许只 commit 不 push，也不允许依赖外部手动推。每次更新 MEMORY.md 或 entities.json 后，立即在仓库根目录（C:/Users/Administrator/gerenzhuanyong）执行 git add -A → commit（附简短描述）→ push。会话启动时的自动同步（检查 24h 条件）也走同一流程。
+文件路径：C:/Users/Administrator/gerenzhuanyong/MEMORY.md 和 C:/Users/Administrator/gerenzhuanyong/entities.json。
 
 ## 规则 9：每次更新 MEMORY.md 或 entities.json 后，VERSION.md 的 Z +1
 路径：C:/Users/Administrator/gerenzhuanyong/VERSION.md。格式 MnemOS X.Y/Z。X.Y 由用户手动升（重置 Z=1），助手只动 Z。每次完成 memory/entities 更新后，读取当前 Z → +1 → 写回。涉及 git 操作时合并到同一 commit（不要拆成两个 commit）。
 
 ## 规则 10：定期蒸馏 MnemOS 碎片记忆为结构化 MEMORY.md
 每累计 20 轮对话或每天（取先到），自动扫描 MnemOS 中 memory_type=general/空的记忆，用 LLM 判断每条应归类 W/K/I/D/E/R/S，删除重复/无价值内容，将高质量碎片提炼合并入 MEMORY.md 对应章节。操作顺序：(1) 扫描 general 类型；(2) LLM 分类 + 去重；(3) 写回 MnemOS 更新类型；(4) 提炼内容追加到 MEMORY.md；(5) git add -A → commit → push → VERSION Z+1。
+文件路径：C:/Users/Administrator/gerenzhuanyong/MEMORY.md。
+§
+## 规则 11：会话启动时检查未提交变更并自动同步
+每次会话启动时：运行 `git status --porcelain` 检查仓库是否有未提交变更。有变更 → git add -A → git commit -m "session: auto-sync YYYY-MM-DD" → git push。无变更 → 跳过什么都不做。
+仓库根目录：C:/Users/Administrator/gerenzhuanyong。

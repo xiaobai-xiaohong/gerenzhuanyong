@@ -1,1 +1,1 @@
-MnemOS 6.0/6
+MnemOS 6.0/7
