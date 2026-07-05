@@ -16,3 +16,4 @@ __pycache__/
 .idea/
 .vscode/
 *.swp
+test_*.txt
