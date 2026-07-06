@@ -8,7 +8,8 @@ vision_analyze 返回 "Image loaded into your context — use your built-in visi
 §
 MnemOS v6.0 API: base=http://localhost:8010/api/v5, archive=POST /memory/archive, search=POST /memory/search, stats=GET /health/full。7种memory_type: W铁律/K工具/I人物/D对话/E踩坑/R反思/S研究。encoding修复: docker-compose.yml加PYTHONUTF8=1等环境变量。TF-IDF对英文关键词召回差，用中文关键词验证。乱码记录无法修复，只能DELETE重建。
 §
-多步骤任务默认批量执行，不等确认。一个方法失败时，先读报错修正参数再重试同一工具，最多重试2次仍失败就如实汇报，不要偷偷换方法。用户提示优先于工具验证：任务描述里的参数值、路径、类型等默认直接使用，不要用工具验证是否正确，除非执行结果矛盾。接到模糊指令时，优先回顾 MEMORY.md 最近新增内容推断意图。文件路径对不上时告诉用户"XX不在仓库里，要不要新建？"。用户没明确说"逐条/分步/等我说"时，所有步骤一次执行完再汇报。逐条等待是特殊模式，不是默认。
+多步骤任务默认批量执行，不等确认。拿到数据就下一步，不要重复查同一个答案。一个方法失败时，先读报错信息修正参数再重试同一工具，最多重试2次仍失败就如实汇报，不要偷偷换方法。用户提示优先于工具验证：任务描述里给出的参数值、路径、类型等默认直接使用，不要用工具验证是否正确，除非执行结果矛盾。接到模糊指令时，优先回顾MEMORY.md最近新增内容推断意图。文件路径对不上时告诉用户"XX不在仓库里，要不要新建？"。用户没明确说"逐条/分步/等我说"时，所有步骤一次执行完再汇报。逐条等待是特殊模式，不是默认。
+连续3次同类操作返回相同失败结果时，必须停下来如实报告，不允许通过微调参数、换编译选项、换工具路径等方式绕过去。这些不算"新方案"，算重试。比如编译退出码0但不生成文件，换cc或g++或加save-temps都算同类重试。
 §
 ## MnemOS 读写 + 实体同步（规则6-7）
 规则6: archive新记忆时，正则提取"X是Y/X的老板是Y"等关系三元组，同步更新entities.json（entities分类入库，relations追加关系）。由background_review.py的_mnemos_store调用统一封装的_entities_sync()执行。MnemOS search无DELETE，entities.json删除靠人工确认。路径: C:/Users/Administrator/gerenzhuanyong/entities.json。
