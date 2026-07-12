@@ -206,20 +206,6 @@ gerenzhuanyong/
 
 ---
 
-## 🔗 与 duMem 的关系
-
-MnemOS v6.0 是 duMem 的**独立部署版本**，借鉴了 duMem 的核心设计理念：
-
-- ✅ Trust Scoring + Decay 衰减
-- ✅ 7 类记忆类型
-- ✅ Social Closer 废话过滤
-- ✅ Jaccard 语义去重
-- ✅ Shell Hook 注入
-- ✅ LLM 自动提取
-
-**区别**：duMem 是依附于 Hermes 的内嵌方案，MnemOS 是独立的 Docker 微服务。
-
----
 
 ## 📄 License
 
