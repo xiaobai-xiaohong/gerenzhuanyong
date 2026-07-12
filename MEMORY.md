@@ -24,6 +24,11 @@
   - LLM：SiliconFlow DeepSeek
   - API Key：68a2f89e...
   - GitHub：https://github.com/xiaobai-xiaohong/gerenzhuanyong
+- 能化产业链知识图谱（~/gerenzhuanyong/kg/）
+  - 技术：NetworkX图遍历 + SQLite持久化
+  - 数据：89实体/176关系（32品种/24装置/7港口/9区域/6事件政策）
+  - 功能：产业链查询、事件影响追踪、替代品种、路径查找、研报自动抽取
+  - 使用：python kg_cli.py chain/impact/path/search 等命令
 
 ## 铁律
 - 所有回复以中文为主

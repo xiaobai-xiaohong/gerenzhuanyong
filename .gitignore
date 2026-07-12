@@ -17,3 +17,18 @@ __pycache__/
 .vscode/
 *.swp
 test_*.txt
+
+# 知识图谱
+kg/*.db
+kg/__pycache__/
+
+# 研报PDF（太大不推）
+研报/**/*.pdf
+
+# 模型文件
+*.pth
+*.pt
+*.ckpt
+
+# 大数据文件
+*.csv
