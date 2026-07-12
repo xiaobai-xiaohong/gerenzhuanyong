@@ -1,8 +1,8 @@
-﻿# 🧠 MnemOS v6.0 — 认知记忆操作系统
+﻿# 🧠 MnemOS v6.1 — 认知记忆操作系统
 
-> **一句话**：为 AI Agent 提供长期记忆能力，支持语义检索、Trust 评分、自动提取、Shell Hook 注入。
+> **一句话**：为 AI Agent 提供长期记忆能力，支持语义检索、Trust 评分、自动提取、Shell Hook 注入、MCP 协议。
 
-**版本**：v6.0.0  
+**版本**：v6.1.0  
 **更新日期**：2026-07-12  
 **适用对象**：Hermes Agent / 任何需要长期记忆的 AI Agent
 
@@ -20,36 +20,9 @@
 | 🤖 **自动提取** | LLM 自动从对话中提取关键事实 |
 | 🔌 **Shell Hook** | pre_llm_call 注入相关记忆到 LLM 上下文 |
 | 🛡️ **安全认证** | API Key 认证，端口仅本机访问 |
-
----
-
-## 🏗️ 系统架构
-
-```
-┌─────────────────────────────────────────────────────┐
-│                 FastAPI 服务 (:8010)                 │
-├─────────────────────────────────────────────────────┤
-│  归档 API │ 搜索 API │ 注入 API │ 提取 API         │
-├─────────────────────────────────────────────────────┤
-│              核心服务层                              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────────────┐    │
-│  │ 三馆管线 │ │ 检索引擎 │ │ 自动提取服务     │    │
-│  └────┬─────┘ └────┬─────┘ └────────┬─────────┘    │
-│       │            │                │               │
-│  ┌────▼────────────▼────────────────▼──────────┐    │
-│  │        SiliconFlow 嵌入 (BGE-M3)            │    │
-│  └─────────────────┬───────────────────────────┘    │
-│                    │                                │
-│  ┌─────────────────▼───────────────────────────┐    │
-│  │  辅助引擎：去重 │ 废话过滤 │ Trust + Decay  │    │
-│  └─────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────┘
-                        │
-          ┌─────────────▼─────────────┐
-          │   PostgreSQL + pgvector    │
-          │   (向量存储 + 元数据)      │
-          └───────────────────────────┘
-```
+| 🔗 **MCP 协议** | 标准 MCP 工具，Hermes 直接调用 |
+| 🐍 **Python SDK** | 一行代码归档、检索、注入记忆 |
+| 📚 **知识谱系** | 记录"哪个方案在什么场景下最好" |
 
 ---
 
@@ -90,6 +63,100 @@ docker ps --filter name=mnemosyne
 
 ---
 
+## 🐍 Python SDK
+
+### 安装
+
+```bash
+# 无需安装，直接使用
+from sdk.mnemosyne import MnemosyneClient
+```
+
+### 快速开始
+
+```python
+from sdk.mnemosyne import MnemosyneClient
+
+# 初始化客户端
+c = MnemosyneClient(
+    base_url="http://127.0.0.1:8010",
+    api_key="your-api-key"
+)
+
+# 归档记忆
+c.archive("Docker Hub 国内需要配置镜像加速", memory_type="E")
+
+# 语义检索
+results = c.search("Docker 部署问题", top_k=3)
+
+# 获取注入上下文
+context = c.inject("当前对话主题")
+
+# LLM 提取事实
+c.extract("今天遇到了Redis问题...", memory_type="E")
+
+# Trust 反馈
+c.feedback("mem_xxx", helpful=True)
+
+# 统计信息
+stats = c.stats()
+```
+
+---
+
+## 🔗 MCP 协议
+
+### 工具列表
+
+| 工具 | 说明 |
+|------|------|
+| `mnemosyne_archive` | 归档记忆 |
+| `mnemosyne_search` | 语义检索 |
+| `mnemosyne_inject` | 获取注入上下文 |
+| `mnemosyne_feedback` | Trust 反馈 |
+| `mnemosyne_stats` | 统计信息 |
+
+### 在 Hermes 中使用
+
+```json
+{
+  "mcpServers": {
+    "mnemosyne": {
+      "command": "python",
+      "args": ["mnemos-mcp/server.py"],
+      "env": {
+        "MNEMOSYNE_URL": "http://127.0.0.1:8010",
+        "MNEMOSYNE_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+---
+
+## 📚 知识谱系
+
+记录"哪个方案在什么场景下最好"，不只是存事实，还能追踪最佳实践。
+
+### API 接口
+
+```bash
+# 添加知识谱系
+curl -X POST "http://127.0.0.1:8010/api/v5/genealogy/add?knowledge_id=mem_xxx&scenario=Docker部署&solution=配置镜像加速" \
+  -H "x-api-key: your-key"
+
+# 记录使用结果
+curl -X POST "http://127.0.0.1:8010/api/v5/genealogy/record?genealogy_id=xxx&success=true" \
+  -H "x-api-key: your-key"
+
+# 查找最佳方案
+curl -X POST "http://127.0.0.1:8010/api/v5/genealogy/find?scenario=Docker" \
+  -H "x-api-key: your-key"
+```
+
+---
+
 ## 📡 API 接口
 
 ### 认证方式
@@ -111,30 +178,9 @@ x-api-key: <你的 MNEMOSYNE_API_KEY>
 | `/api/v5/memory/extract` | POST | LLM 提取事实 |
 | `/api/v5/memory/feedback` | POST | Trust 反馈 |
 | `/api/v5/memory/trust-stats` | GET | Trust 统计 |
-
-### 调用示例
-
-```bash
-# 归档记忆
-curl -X POST http://127.0.0.1:8010/api/v5/memory/archive \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: <your-key>" \
-  -d '{"content": "Docker Hub 国内需要配置镜像加速", "memory_type": "E"}'
-
-# 语义检索
-curl -X POST http://127.0.0.1:8010/api/v5/memory/search \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: <your-key>" \
-  -d '{"query": "Docker 部署问题", "top_k": 3}'
-
-# Shell Hook 注入
-curl -X POST "http://127.0.0.1:8010/api/v5/memory/inject?query=Docker问题&depth=L0&top_k=3" \
-  -H "x-api-key: <your-key>"
-
-# LLM 提取事实
-curl -X POST "http://127.0.0.1:8010/api/v5/memory/extract?content=今天遇到了Docker问题...&memory_type=E" \
-  -H "x-api-key: <your-key>"
-```
+| `/api/v5/genealogy/add` | POST | 添加知识谱系 |
+| `/api/v5/genealogy/find` | POST | 查找最佳方案 |
+| `/api/v5/genealogy/stats` | GET | 谱系统计 |
 
 ---
 
@@ -176,6 +222,38 @@ AUTO_EXTRACT_INTERVAL=3600
 
 ---
 
+## 🏗️ 系统架构
+
+```
+┌─────────────────────────────────────────────────────┐
+│                 FastAPI 服务 (:8010)                 │
+├─────────────────────────────────────────────────────┤
+│  归档 API │ 搜索 API │ 注入 API │ 提取 API         │
+│  MCP 服务 │ SDK 接口 │ 知识谱系                    │
+├─────────────────────────────────────────────────────┤
+│              核心服务层                              │
+│  ┌──────────┐ ┌──────────┐ ┌──────────────────┐    │
+│  │ 三馆管线 │ │ 检索引擎 │ │ 自动提取服务     │    │
+│  └────┬─────┘ └────┬─────┘ └────────┬─────────┘    │
+│       │            │                │               │
+│  ┌────▼────────────▼────────────────▼──────────┐    │
+│  │        SiliconFlow 嵌入 (BGE-M3)            │    │
+│  └─────────────────┬───────────────────────────┘    │
+│                    │                                │
+│  ┌─────────────────▼───────────────────────────┐    │
+│  │  辅助引擎：去重 │ 废话过滤 │ Trust + Decay  │    │
+│  │  知识谱系 │ MCP 协议                        │    │
+│  └─────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────┘
+                        │
+          ┌─────────────▼─────────────┐
+          │   PostgreSQL + pgvector    │
+          │   (向量存储 + 元数据)      │
+          └───────────────────────────┘
+```
+
+---
+
 ## 📁 项目结构
 
 ```
@@ -186,15 +264,10 @@ gerenzhuanyong/
 │   ├── routers/        # API 路由
 │   ├── schemas/        # 请求/响应模型
 │   └── services/       # 核心业务逻辑
-│       ├── three_hall.py        # 三馆管线（归档）
-│       ├── search_service.py    # 检索引擎
-│       ├── vector_service.py    # 向量嵌入
-│       ├── llm_service.py       # LLM 提取
-│       ├── auto_extract_service.py  # 自动提取
-│       ├── inject_service.py    # 注入服务
-│       ├── dedup_engine.py      # 去重引擎
-│       ├── social_closer.py     # 废话过滤
-│       └── memory_quality.py    # Trust 评分
+├── sdk/
+│   └── mnemosyne.py    # Python SDK
+├── mnemos-mcp/
+│   └── server.py       # MCP 协议服务端
 ├── scripts/
 │   ├── inject.sh       # Shell Hook 脚本
 │   └── *.py            # 维护脚本
@@ -205,7 +278,6 @@ gerenzhuanyong/
 ```
 
 ---
-
 
 ## 📄 License
 
