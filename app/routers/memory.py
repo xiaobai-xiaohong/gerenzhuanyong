@@ -459,3 +459,64 @@ async def extract_status():
         "enabled": auto_extract_service._running,
         "llm_available": auto_extract_service._running,
     })
+
+
+# ─── Knowledge Genealogy ─────────────────────────────────────────────────────
+
+from app.services.genealogy_service import GenealogyService
+
+@router.post("/api/v5/genealogy/add", response_model=APIResponse)
+async def genealogy_add(
+    knowledge_id: str,
+    scenario: str,
+    solution: str,
+    tags: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_api_key),
+):
+    """添加知识谱系（记录方案适用场景）"""
+    rid = _get_request_id()
+    service = GenealogyService(db)
+    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    result = await service.add_genealogy(
+        knowledge_id=knowledge_id,
+        scenario=scenario,
+        solution=solution,
+        tags=tag_list,
+    )
+    return api_response(result, request_id=rid)
+
+
+@router.post("/api/v5/genealogy/record", response_model=APIResponse)
+async def genealogy_record(
+    genealogy_id: str,
+    success: bool,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_api_key),
+):
+    """记录使用结果（更新成功率）"""
+    rid = _get_request_id()
+    service = GenealogyService(db)
+    result = await service.record_usage(genealogy_id, success)
+    return api_response(result, request_id=rid)
+
+
+@router.post("/api/v5/genealogy/find", response_model=APIResponse)
+async def genealogy_find(
+    scenario: str,
+    top_k: int = 3,
+    db: AsyncSession = Depends(get_db),
+):
+    """查找最佳方案"""
+    rid = _get_request_id()
+    service = GenealogyService(db)
+    results = await service.find_best(scenario, top_k)
+    return api_response({"results": results, "total": len(results)}, request_id=rid)
+
+
+@router.get("/api/v5/genealogy/stats")
+async def genealogy_stats(db: AsyncSession = Depends(get_db)):
+    """谱系统计"""
+    service = GenealogyService(db)
+    stats = await service.stats()
+    return api_response(stats)

@@ -1,280 +1,260 @@
-#!/usr/bin/env python3
 """
-MnemOS v6.0 MCP Server — stdio transport
-=========================================
-Exposes MnemOS memory/recall/feedback/health as MCP tools to any MCP client.
-
-Tools
------
-  mnemos_health        GET  /api/v5/health/full
-  mnemos_search        POST /api/v5/memory/search
-  mnemos_memories      GET  /api/v5/memory/trust-stats
-  mnemos_feedback      POST /api/v5/memory/feedback
-
-Config (config.yaml)
---------------------
-  mcp_servers:
-    mnemos:
-      command: python
-      args: [C:/Users/Administrator/gerenzhuanyong/mnemos-mcp/server.py]
-      timeout: 60
-
-Transport: stdio (JSON-RPC over stdin/stdout)
+MCP Server — 将 MnemOS 封装为标准 MCP 工具
+让 Hermes 等支持 MCP 的 Agent 直接调用记忆系统
 """
-
-from __future__ import annotations
-
 import json
-import os
 import sys
-import urllib.request
-import urllib.error
+import asyncio
 from typing import Any, Dict, List, Optional
 
-# ---------------------------------------------------------------------------
-# MnemOS API client
-# ---------------------------------------------------------------------------
-
-MNEMOS_BASE = os.environ.get("MNEMOS_BASE_URL", "http://localhost:8010")
-TIMEOUT = int(os.environ.get("MNEMOS_TIMEOUT", "30"))
-
-
-def _mnemos_get(path: str) -> Dict[str, Any]:
-    url = f"{MNEMOS_BASE}{path}"
-    req = urllib.request.Request(url)
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            return json.loads(r.read().decode())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode() if e.fp else ""
-        try:
-            return json.loads(body)
-        except Exception:
-            return {"error": f"HTTP {e.code}", "detail": body}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-def _mnemos_post(path: str, body: Dict[str, Any]) -> Dict[str, Any]:
-    url = f"{MNEMOS_BASE}{path}"
-    data = json.dumps(body).encode()
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            return json.loads(r.read().decode())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode() if e.fp else ""
-        try:
-            return json.loads(body)
-        except Exception:
-            return {"error": f"HTTP {e.code}", "detail": body}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-# ---------------------------------------------------------------------------
-# FastMCP server
-# ---------------------------------------------------------------------------
-
-try:
-    from mcp.server.fastmcp import FastMCP
-    FASTMCP_AVAILABLE = True
-except ImportError:
-    FASTMCP_AVAILABLE = False
-
-
-def create_server() -> "FastMCP":
-    if not FASTMCP_AVAILABLE:
-        raise ImportError(
-            "FastMCP not available. "
-            "Install with: pip install 'mcp[server]' "
-            "or use the hermes venv python."
-        )
-
-    mcp = FastMCP(
-        "mnemos",
-        instructions=(
-            "MnemOS v6.0 memory system. Stores, retrieves, and quality-scores "
-            "persistent agent memories with trust scoring, semantic deduplication, "
-            "and half-life decay. Base URL: http://localhost:8010"
-        ),
-    )
-
-    # -------------------------------------------------------------------------
-    # Tool: mnemos_health
-    # -------------------------------------------------------------------------
-    @mcp.tool(
-        title="MnemOS Health",
-        description=(
-            "Check MnemOS v6.0 health status, version, active features, "
-            "and memory statistics (total, avg_trust, type_distribution)."
-        ),
-    )
-    def mnemos_health() -> str:
-        """Poll the /api/v5/health/full endpoint."""
-        result = _mnemos_get("/api/v5/health/full")
-        if "error" in result:
-            return json.dumps({"success": False, "error": result["error"]}, indent=2)
-        data = result.get("data", {})
-        return json.dumps(
-            {
-                "success": True,
-                "version": data.get("version"),
-                "features": data.get("features", []),
-                "memory_stats": data.get("memory_stats", {}),
-                "status": data.get("status"),
-            },
-            indent=2,
-            ensure_ascii=False,
-        )
-
-    # -------------------------------------------------------------------------
-    # Tool: mnemos_search
-    # -------------------------------------------------------------------------
-    @mcp.tool(
-        title="MnemOS Search",
-        description=(
-            "Search long-term memory using semantic vector similarity across "
-            "three recall depths: L0 (fast, ~3 results), L1 (medium, ~5 results), "
-            "L2 (deep, ~10 results). Returns memory_id, title, summary, content_type, "
-            "trust_score, memory_type, final_score, and decay_at. "
-            "Set depth='auto' for automatic depth selection."
-        ),
-    )
-    def mnemos_search(
-        query: str,
-        depth: str = "auto",
-        top_k: int = 5,
-    ) -> str:
-        """
-        Search MnemOS memories.
-
-        Args:
-            query: Natural-language search query.
-            depth: 'auto' | 'L0' | 'L1' | 'L2'. L0=fresh session, L1=recent, L2=archival.
-            top_k: Number of results to return (default 5).
-        """
-        body = {"query": query, "depth": depth, "top_k": top_k}
-        result = _mnemos_post("/api/v5/memory/search", body)
-        if "error" in result:
-            return json.dumps({"success": False, "error": result["error"]}, indent=2)
-        data = result.get("data", {})
-        outputs = []
-        for r in data.get("results", []):
-            outputs.append(
-                {
-                    "memory_id": r.get("memory_id"),
-                    "title": r.get("title", "")[:120],
-                    "summary": r.get("summary", "")[:300],
-                    "content_type": r.get("content_type"),
-                    "memory_type": r.get("memory_type"),
-                    "trust_score": r.get("trust_score"),
-                    "final_score": round(r.get("final_score", 0), 4),
-                    "decay_at": r.get("decay_at"),
+# MCP 工具定义
+TOOLS = [
+    {
+        "name": "mnemosyne_archive",
+        "description": "归档一条记忆到永久记忆库。支持7类记忆：W铁律/K工具/I人物/D对话/E踩坑/R反思/S研究",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "要归档的记忆内容"
+                },
+                "memory_type": {
+                    "type": "string",
+                    "enum": ["W", "K", "I", "D", "E", "R", "S"],
+                    "default": "D",
+                    "description": "记忆类型"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "标签列表"
                 }
-            )
-        return json.dumps(
-            {
-                "success": True,
-                "depth_used": data.get("depth_used"),
-                "total": data.get("total"),
-                "results": outputs,
             },
-            indent=2,
-            ensure_ascii=False,
-        )
-
-    # -------------------------------------------------------------------------
-    # Tool: mnemos_memories
-    # -------------------------------------------------------------------------
-    @mcp.tool(
-        title="MnemOS Memory Stats",
-        description=(
-            "Retrieve memory quality statistics: total count, average trust score, "
-            "low-trust count (below 0.2 threshold), memory type distribution, "
-            "and the current trust threshold."
-        ),
-    )
-    def mnemos_memories() -> str:
-        """Get MnemOS memory statistics and trust breakdown."""
-        result = _mnemos_get("/api/v5/memory/trust-stats")
-        if "error" in result:
-            return json.dumps({"success": False, "error": result["error"]}, indent=2)
-        data = result.get("data", {})
-        return json.dumps(
-            {
-                "success": True,
-                "total": data.get("total"),
-                "avg_trust": data.get("avg_trust"),
-                "low_trust_count": data.get("low_trust_count"),
-                "type_distribution": data.get("type_distribution", {}),
-                "threshold_blacklist": data.get("threshold_blacklist"),
+            "required": ["content"]
+        }
+    },
+    {
+        "name": "mnemosyne_search",
+        "description": "从永久记忆库中检索相关知识与历史经验",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "检索关键词或问题描述"
+                },
+                "top_k": {
+                    "type": "integer",
+                    "default": 5,
+                    "description": "返回结果数量"
+                },
+                "depth": {
+                    "type": "string",
+                    "enum": ["auto", "L0", "L1", "L2"],
+                    "default": "auto",
+                    "description": "检索深度"
+                }
             },
-            indent=2,
-            ensure_ascii=False,
-        )
-
-    # -------------------------------------------------------------------------
-    # Tool: mnemos_feedback
-    # -------------------------------------------------------------------------
-    @mcp.tool(
-        title="MnemOS Feedback",
-        description=(
-            "Submit helpful/unhelpful feedback for a memory to update its trust score. "
-            "Uses Bayesian smoothing: helpful=true increments count and raises trust toward 1.0; "
-            "helpful=false decrements and penalizes toward 0.0. "
-            "Returns the new_trust, delta, and updated counts."
-        ),
-    )
-    def mnemos_feedback(
-        memory_id: str,
-        helpful: bool,
-    ) -> str:
-        """
-        Submit feedback for a memory entry.
-
-        Args:
-            memory_id: The memory identifier (e.g. mem_xxxx).
-            helpful: True if this memory was useful; False if it was harmful or wrong.
-        """
-        path = f"/api/v5/memory/feedback?memory_id={memory_id}&helpful={'true' if helpful else 'false'}"
-        result = _mnemos_post(path, {})
-        if "error" in result:
-            return json.dumps({"success": False, "error": result["error"]}, indent=2)
-        data = result.get("data", {})
-        return json.dumps(
-            {
-                "success": True,
-                "memory_id": data.get("memory_id"),
-                "new_trust": data.get("new_trust"),
-                "delta": data.get("delta"),
-                "helpful": data.get("helpful"),
-                "total_helpful": data.get("total_helpful"),
-                "total_unhelpful": data.get("total_unhelpful"),
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "mnemosyne_inject",
+        "description": "获取相关记忆上下文，用于注入到LLM对话中",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "当前对话主题或问题"
+                },
+                "top_k": {
+                    "type": "integer",
+                    "default": 3,
+                    "description": "注入的记忆数量"
+                }
             },
-            indent=2,
-            ensure_ascii=False,
-        )
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "mnemosyne_feedback",
+        "description": "对记忆提供反馈，更新Trust评分",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "memory_id": {
+                    "type": "string",
+                    "description": "记忆ID"
+                },
+                "helpful": {
+                    "type": "boolean",
+                    "description": "是否有帮助"
+                }
+            },
+            "required": ["memory_id", "helpful"]
+        }
+    },
+    {
+        "name": "mnemosyne_stats",
+        "description": "获取记忆系统统计信息",
+        "inputSchema": {
+            "type": "object",
+            "properties": {}
+        }
+    }
+]
 
-    return mcp
+
+class MnemosyneMCPServer:
+    """MCP 协议服务端"""
+
+    def __init__(self, base_url: str = "http://127.0.0.1:8010", api_key: str = ""):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+
+    async def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """处理 MCP 请求"""
+        method = request.get("method")
+        params = request.get("params", {})
+        req_id = request.get("id")
+
+        if method == "initialize":
+            return self._response(req_id, {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "mnemosyne", "version": "6.0.0"}
+            })
+        elif method == "tools/list":
+            return self._response(req_id, {"tools": TOOLS})
+        elif method == "tools/call":
+            result = await self._call_tool(params.get("name"), params.get("arguments", {}))
+            return self._response(req_id, result)
+        elif method == "ping":
+            return self._response(req_id, {})
+        else:
+            return self._error(req_id, -32601, f"Method not found: {method}")
+
+    async def _call_tool(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        """调用 MCP 工具"""
+        import httpx
+
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["x-api-key"] = self.api_key
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if name == "mnemosyne_archive":
+                resp = await client.post(
+                    f"{self.base_url}/api/v5/memory/archive",
+                    json={
+                        "content": args["content"],
+                        "memory_type": args.get("memory_type", "D"),
+                        "tags": args.get("tags"),
+                    },
+                    headers=headers,
+                )
+                data = resp.json()
+                return {
+                    "content": [{
+                        "type": "text",
+                        "text": json.dumps(data, ensure_ascii=False, indent=2)
+                    }]
+                }
+
+            elif name == "mnemosyne_search":
+                resp = await client.post(
+                    f"{self.base_url}/api/v5/memory/search",
+                    json={
+                        "query": args["query"],
+                        "top_k": args.get("top_k", 5),
+                        "depth": args.get("depth", "auto"),
+                    },
+                    headers=headers,
+                )
+                data = resp.json()
+                return {
+                    "content": [{
+                        "type": "text",
+                        "text": json.dumps(data, ensure_ascii=False, indent=2)
+                    }]
+                }
+
+            elif name == "mnemosyne_inject":
+                import urllib.parse
+                resp = await client.post(
+                    f"{self.base_url}/api/v5/memory/inject?query={urllib.parse.quote(args['query'])}&top_k={args.get('top_k', 3)}",
+                    headers=headers,
+                )
+                data = resp.json()
+                return {
+                    "content": [{
+                        "type": "text",
+                        "text": data.get("data", {}).get("context", "")
+                    }]
+                }
+
+            elif name == "mnemosyne_feedback":
+                resp = await client.post(
+                    f"{self.base_url}/api/v5/memory/feedback?memory_id={args['memory_id']}&helpful={str(args['helpful']).lower()}",
+                    headers=headers,
+                )
+                data = resp.json()
+                return {
+                    "content": [{
+                        "type": "text",
+                        "text": json.dumps(data, ensure_ascii=False, indent=2)
+                    }]
+                }
+
+            elif name == "mnemosyne_stats":
+                resp = await client.get(
+                    f"{self.base_url}/api/v5/memory/trust-stats",
+                    headers=headers,
+                )
+                data = resp.json()
+                return {
+                    "content": [{
+                        "type": "text",
+                        "text": json.dumps(data, ensure_ascii=False, indent=2)
+                    }]
+                }
+
+            else:
+                return {
+                    "content": [{"type": "text", "text": f"Unknown tool: {name}"}],
+                    "isError": True
+                }
+
+    def _response(self, req_id: Any, result: Any) -> Dict[str, Any]:
+        return {"jsonrpc": "2.0", "id": req_id, "result": result}
+
+    def _error(self, req_id: Any, code: int, message: str) -> Dict[str, Any]:
+        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}}
 
 
-# ---------------------------------------------------------------------------
-# Entrypoint
-# ---------------------------------------------------------------------------
+async def main():
+    """启动 MCP 服务器（stdio 模式）"""
+    import os
+    base_url = os.getenv("MNEMOSYNE_URL", "http://127.0.0.1:8010")
+    api_key = os.getenv("MNEMOSYNE_API_KEY", "")
+
+    server = MnemosyneMCPServer(base_url, api_key)
+
+    # 从 stdin 读取请求，写入 stdout
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            request = json.loads(line)
+            response = await server.handle_request(request)
+            print(json.dumps(response), flush=True)
+        except Exception as e:
+            error_resp = {"jsonrpc": "2.0", "id": None, "error": {"code": -32603, "message": str(e)}}
+            print(json.dumps(error_resp), flush=True)
+
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--get-version":
-        print("1.0.0")
-        sys.exit(0)
-
-    if not FASTMCP_AVAILABLE:
-        print(
-            "ERROR: FastMCP (mcp[server]) is not installed. "
-            "Run: pip install 'mcp[server]'",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    server = create_server()
-    server.run(transport="stdio")
+    asyncio.run(main())
