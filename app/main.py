@@ -31,8 +31,13 @@ async def init_db():
 async def lifespan(app: FastAPI):
     # Startup
     await init_db()
+    # Start auto-extract service
+    from app.services.auto_extract_service import auto_extract_service
+    await auto_extract_service.start()
     yield
     # Shutdown
+    from app.services.auto_extract_service import auto_extract_service
+    await auto_extract_service.stop()
     await async_engine.dispose()
 
 

@@ -7,7 +7,7 @@ services:
     image: mnemosyne/mnemosyne:v6.0
     container_name: mnemosyne-core
     ports:
-      - "8010:8010"
+      - "127.0.0.1:8010:8010"
     env_file:
       - .env
     environment:

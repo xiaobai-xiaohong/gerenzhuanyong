@@ -1,7 +1,7 @@
 """
 Vector embedding service.
 Generates 2048-dim embeddings for content.
-Uses a simple TF-IDF based approach as fallback when no LLM API is configured.
+Supports: MiniMax, DeepSeek, TF-IDF fallback.
 """
 import json
 import hashlib
@@ -36,52 +36,155 @@ class VectorService:
             vec /= norm
         return vec.tolist()
 
+    async def _embed_minimax(self, content: str) -> Optional[List[float]]:
+        """Call MiniMax embedding API."""
+        api_key = settings.model_api_key
+        if not api_key or not api_key.strip():
+            return None
+        import httpx
+        import logging
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, connect=10.0),
+                proxy=None,
+                trust_env=False,
+            ) as client:
+                resp = await client.post(
+                    "https://api.minimax.chat/v1/embeddings",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "embo-01",
+                        "texts": [content[:8192]],
+                        "type": "query",
+                    },
+                )
+                logging.warning(f"[VectorService] MiniMax resp status={resp.status_code}")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    vectors = data.get("vectors") or []
+                    embedding = vectors[0] if vectors and isinstance(vectors[0], list) else []
+                    if embedding:
+                        vec = embedding[: self.DIM]
+                        while len(vec) < self.DIM:
+                            vec.append(0.0)
+                        logging.warning(f"[VectorService] MiniMax SUCCESS vec_dim={len(vec)}")
+                        return vec
+        except Exception as e:
+            logging.warning(f"[VectorService] MiniMax EXCEPTION: {e}")
+        return None
+
+    async def _embed_deepseek(self, content: str) -> Optional[List[float]]:
+        """Call DeepSeek embedding API (OpenAI-compatible)."""
+        api_key = settings.deepseek_api_key
+        if not api_key or not api_key.strip():
+            return None
+        import httpx
+        import logging
+        base_url = settings.deepseek_base_url.rstrip("/")
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, connect=10.0),
+                proxy=None,
+                trust_env=False,
+            ) as client:
+                resp = await client.post(
+                    f"{base_url}/v1/embeddings",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "deepseek-embedding",
+                        "input": content[:8192],
+                    },
+                )
+                logging.warning(f"[VectorService] DeepSeek resp status={resp.status_code}")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    items = data.get("data") or []
+                    embedding = items[0].get("embedding") if items else []
+                    if embedding:
+                        vec = embedding[: self.DIM]
+                        while len(vec) < self.DIM:
+                            vec.append(0.0)
+                        logging.warning(f"[VectorService] DeepSeek SUCCESS vec_dim={len(vec)}")
+                        return vec
+        except Exception as e:
+            logging.warning(f"[VectorService] DeepSeek EXCEPTION: {e}")
+        return None
+
+    async def _embed_siliconflow(self, content: str) -> Optional[List[float]]:
+        """Call Silicon Flow embedding API (OpenAI-compatible)."""
+        api_key = settings.siliconflow_api_key
+        if not api_key or not api_key.strip():
+            return None
+        import httpx
+        import logging
+        base_url = settings.siliconflow_base_url.rstrip("/")
+        model = settings.siliconflow_model
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, connect=10.0),
+                proxy=None,
+                trust_env=False,
+            ) as client:
+                resp = await client.post(
+                    f"{base_url}/v1/embeddings",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "input": content[:8192],
+                    },
+                )
+                logging.warning(f"[VectorService] SiliconFlow resp status={resp.status_code}")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    items = data.get("data") or []
+                    embedding = items[0].get("embedding") if items else []
+                    if embedding:
+                        vec = embedding[: self.DIM]
+                        while len(vec) < self.DIM:
+                            vec.append(0.0)
+                        logging.warning(f"[VectorService] SiliconFlow SUCCESS vec_dim={len(vec)}")
+                        return vec
+        except Exception as e:
+            logging.warning(f"[VectorService] SiliconFlow EXCEPTION: {e}")
+        return None
+
     async def embed(self, content: str) -> List[float]:
-        """Get embedding for content. Uses MiniMax API first, falls back to TF-IDF."""
+        """Get embedding for content. Provider priority: config -> fallback TF-IDF."""
         key = self._hash_content(content)
         if key in self._cache:
             return self._cache[key]
 
-        api_key = settings.model_api_key
-        if api_key and api_key.strip():
-            import httpx
-            import logging
-            # MiniMax API 走直接连接，不走代理（容器可直连外网 443）
-            try:
-                async with httpx.AsyncClient(
-                    timeout=httpx.Timeout(30.0, connect=10.0),
-                    proxy=None,
-                    trust_env=False,
-                ) as client:
-                    resp = await client.post(
-                        "https://api.minimax.chat/v1/embeddings",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": "embo-01",
-                            "texts": [content[:8192]],
-                            "type": "query",
-                        },
-                    )
-                    logging.warning(f"[VectorService] MiniMax resp status={resp.status_code}")
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        vectors = data.get("vectors") or []
-                        embedding = vectors[0] if vectors and isinstance(vectors[0], list) else []
-                        if embedding:
-                            vec = embedding[: self.DIM]
-                            while len(vec) < self.DIM:
-                                vec.append(0.0)
-                            self._cache[key] = vec
-                            logging.warning(f"[VectorService] MiniMax SUCCESS vec_dim={len(vec)}")
-                            return vec
-            except Exception as e:
-                import traceback
-                logging.warning(f"[VectorService] MiniMax EXCEPTION: {e}")
+        provider = settings.model_provider.lower()
+        vec = None
 
-        vec = self._tfidf_vector(content)
+        if provider == "siliconflow":
+            vec = await self._embed_siliconflow(content)
+        elif provider == "deepseek":
+            vec = await self._embed_deepseek(content)
+        elif provider == "minimax":
+            vec = await self._embed_minimax(content)
+        elif provider == "tfidf":
+            vec = None  # skip API, go straight to TF-IDF
+        else:
+            # auto: try siliconflow -> minimax -> deepseek
+            vec = await self._embed_siliconflow(content)
+            if not vec:
+                vec = await self._embed_minimax(content)
+            if not vec:
+                vec = await self._embed_deepseek(content)
+
+        if not vec:
+            vec = self._tfidf_vector(content)
+
         self._cache[key] = vec
         return vec
 

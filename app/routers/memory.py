@@ -1,11 +1,12 @@
 import uuid
 import time
 from datetime import datetime
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from app.core.database import get_db
+from app.core.config import get_settings
 from app.schemas.memory import (
     APIResponse, MemoryArchiveRequest,
     MemorySearchRequest, ToolArchiveRequest,
@@ -21,6 +22,14 @@ from app.models.memory import Memory, Project, AgentProfile, SyncVersion
 
 router = APIRouter()
 _request_id = "req_" + uuid.uuid4().hex[:12]
+settings = get_settings()
+
+
+async def verify_api_key(x_api_key: Optional[str] = Header(None)):
+    """API Key 认证（可选，通过 MNEMOSYNE_API_KEY 配置）"""
+    if settings.api_key and settings.api_key != "mnemosyne-api-key-change-me":
+        if not x_api_key or x_api_key != settings.api_key:
+            raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 def api_response(data, message="success", code=0, request_id: Optional[str] = None):
@@ -63,6 +72,7 @@ async def memory_archive(
     req: MemoryArchiveRequest,
     x_tenant_id: Optional[str] = Header(None),
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_api_key),
 ):
     rid = _get_request_id()
     tenant_id = x_tenant_id or req.tenant_id
@@ -106,6 +116,7 @@ async def memory_search(
     req: MemorySearchRequest,
     x_tenant_id: Optional[str] = Header(None),
     db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_api_key),
 ):
     rid = _get_request_id()
     tenant_id = x_tenant_id or req.tenant_id
@@ -390,3 +401,61 @@ async def sync_push(req: SyncPushRequest, db: AsyncSession = Depends(get_db)):
         db.add(sv)
     await db.commit()
     return api_response({"accepted": len(req.changes), "current_version": max_ver}, request_id=rid)
+
+
+# ─── Inject (Shell Hook) ────────────────────────────────────────────────────
+
+@router.post("/api/v5/memory/inject", response_model=APIResponse)
+async def memory_inject(
+    query: str = "",
+    depth: str = "L0",
+    top_k: int = 5,
+    x_tenant_id: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(verify_api_key),
+):
+    """Shell Hook 注入：返回格式化的记忆上下文，供 LLM pre_llm_call 使用"""
+    rid = _get_request_id()
+    tenant_id = x_tenant_id or "default"
+    inject_service = InjectService(db)
+    try:
+        context = await inject_service.inject_context(
+            query=query, depth=depth, top_k=top_k, tenant_id=tenant_id
+        )
+        return api_response(context, request_id=rid)
+    except Exception as e:
+        return api_response({"context": "", "error": str(e)}, code=50001, request_id=rid)
+
+
+# ─── Auto Extract ───────────────────────────────────────────────────────────
+
+from app.services.auto_extract_service import auto_extract_service
+
+@router.post("/api/v5/memory/extract", response_model=APIResponse)
+async def memory_extract(
+    content: str,
+    memory_type: str = "D",
+    tags: Optional[str] = None,
+    _: None = Depends(verify_api_key),
+):
+    """手动触发 LLM 提取：从文本中自动提取关键事实并归档"""
+    rid = _get_request_id()
+    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    results = await auto_extract_service.extract_from_text(
+        content=content, memory_type=memory_type, tags=tag_list
+    )
+    archived = [r for r in results if r.get("status") == "archived"]
+    return api_response({
+        "total": len(results),
+        "archived": len(archived),
+        "results": results,
+    }, request_id=rid)
+
+
+@router.get("/api/v5/memory/extract/status")
+async def extract_status():
+    """查看自动提取服务状态"""
+    return api_response({
+        "enabled": auto_extract_service._running,
+        "llm_available": auto_extract_service._running,
+    })

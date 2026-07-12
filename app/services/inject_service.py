@@ -98,3 +98,19 @@ class InjectService:
             "query_valid": True,
             "token_note": token_note,
         }
+
+    async def inject_context(
+        self,
+        query: str,
+        depth: str = "L0",
+        top_k: int = 5,
+        tenant_id: str = "default",
+    ) -> dict:
+        """返回格式化的注入上下文（API 用）"""
+        result = await self.inject(query, depth, top_k, tenant_id)
+        return {
+            "context": result["injected_context"],
+            "memory_count": result["memory_count"],
+            "depth_used": result["depth_used"],
+            "query_valid": result["query_valid"],
+        }

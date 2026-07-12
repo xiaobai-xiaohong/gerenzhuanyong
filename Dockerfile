@@ -1,5 +1,9 @@
 FROM python:3.11-slim
 
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ENV HTTP_PROXY=${HTTP_PROXY} HTTPS_PROXY=${HTTPS_PROXY}
+
 WORKDIR /app
 
 # Install system deps

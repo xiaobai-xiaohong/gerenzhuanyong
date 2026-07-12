@@ -25,8 +25,25 @@ class Settings(BaseSettings):
     redis_addr: str = os.getenv("REDIS_ADDR", "redis:6379")
 
     # Model
+    model_provider: str = os.getenv("MODEL_PROVIDER", "minimax")  # minimax | deepseek | siliconflow | tfidf | auto
     model_api_key: str = os.getenv("MODEL_API_KEY", "")
+    deepseek_api_key: str = os.getenv("DEEPSEEK_API_KEY", "")
+    deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    siliconflow_api_key: str = os.getenv("SILICONFLOW_API_KEY", "")
+    siliconflow_base_url: str = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn")
+    siliconflow_model: str = os.getenv("SILICONFLOW_MODEL", "BAAI/bge-m3")
     default_model_tier: str = os.getenv("DEFAULT_MODEL_TIER", "light")
+
+    # LLM (for auto-extraction)
+    llm_api_key: str = os.getenv("LLM_API_KEY", "")
+    llm_base_url: str = os.getenv("LLM_BASE_URL", "https://api.deepseek.com")
+    llm_model: str = os.getenv("LLM_MODEL", "deepseek-v4-flash")
+    llm_max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "4096"))
+
+    # Auto-extract
+    auto_extract_enabled: bool = os.getenv("AUTO_EXTRACT_ENABLED", "true").lower() == "true"
+    auto_extract_interval: int = int(os.getenv("AUTO_EXTRACT_INTERVAL", "3600"))  # seconds
+    auto_extract_min_messages: int = int(os.getenv("AUTO_EXTRACT_MIN_MESSAGES", "5"))
 
     # Security
     api_key: str = os.getenv("MNEMOSYNE_API_KEY", "mnemosyne-api-key-change-me")
